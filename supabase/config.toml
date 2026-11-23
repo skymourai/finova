@@ -1,2 +1,4 @@
 ﻿[functions.update-quotes]
 verify_jwt = false
+[functions.record-portfolio-snapshot]
+verify_jwt = false
