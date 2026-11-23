@@ -4,7 +4,7 @@ import type { FormEvent } from "react";
 import {
   Activity, ArrowDownRight, ArrowUpRight, Bell, BriefcaseBusiness,
   ChartNoAxesCombined, ChevronDown, CircleHelp, Coins, LayoutDashboard,
-  LogOut, Plus, Settings2, ShieldCheck, Wallet, Pencil, Trash2, X,
+  LogOut, Plus, ShieldCheck, Wallet, Pencil, Trash2, X,
   RefreshCw, CalendarDays, TrendingUp, Package,
 } from "lucide-react";
 import {
@@ -123,7 +123,6 @@ const navItems = [
   { label: "Investissements", icon: ChartNoAxesCombined, page: "investments" as const },
   { label: "Performance globale", icon: TrendingUp, page: "performance" as const },
   { label: "Mes dettes", icon: ArrowDownRight, page: "debts" as const },
-  { label: "Opérations", icon: Activity },
 ];
 
 const emptyForm = {
@@ -270,6 +269,7 @@ export default function App() {
   const [positionForm, setPositionForm] = useState(emptyPositionForm);
 
   const [activePage, setActivePage] = useState<Page>("overview");
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
   const [valuationModalAccount, setValuationModalAccount] =
     useState<Account | null>(null);
@@ -839,6 +839,8 @@ export default function App() {
             valueInEuros: null as number | null,
             positionCount: 0,
             missingCount: 0,
+            gainLossInEuros: null as number | null,
+            gainLossPercent: null as number | null,
             valuationDate: null as string | null,
             isComplete: false,
             status: "Aucune valorisation enregistrée",
@@ -857,6 +859,8 @@ export default function App() {
           valueInEuros,
           positionCount: 0,
           missingCount: valueInEuros === null ? 1 : 0,
+          gainLossInEuros: null as number | null,
+          gainLossPercent: null as number | null,
           valuationDate: valuation.valuation_date,
           isComplete: valueInEuros !== null,
           status: valueInEuros === null
@@ -867,9 +871,17 @@ export default function App() {
 
       const rows = investmentRows.filter((row) => row.position.account_id === account.id);
       const pricedRows = rows.filter((row) => row.marketValueInEuros !== null);
+      const performanceRows = pricedRows.filter((row) => row.costInEuros !== null);
       const missingCount = rows.length - pricedRows.length;
       const valueInEuros = pricedRows.reduce(
         (sum, row) => sum + (row.marketValueInEuros ?? 0),
+        0
+      );
+      const gainLossInEuros = performanceRows.length > 0
+        ? performanceRows.reduce((sum, row) => sum + (row.gainLossInEuros ?? 0), 0)
+        : null;
+      const investedInEuros = performanceRows.reduce(
+        (sum, row) => sum + (row.costInEuros ?? 0),
         0
       );
 
@@ -878,6 +890,10 @@ export default function App() {
         valueInEuros,
         positionCount: rows.length,
         missingCount,
+        gainLossInEuros,
+        gainLossPercent: gainLossInEuros !== null && investedInEuros > 0
+          ? (gainLossInEuros / investedInEuros) * 100
+          : null,
         valuationDate: null as string | null,
         isComplete: missingCount === 0,
         status: rows.length === 0
@@ -942,6 +958,19 @@ export default function App() {
     () => allocationData.reduce((sum, item) => sum + item.value, 0),
     [allocationData]
   );
+
+  function openAccountDetails(account: Account) {
+    setSelectedAccountId(account.id);
+    setActivePage("accounts");
+    setNotice("");
+    setError("");
+  }
+
+  function backToAccounts() {
+    setSelectedAccountId(null);
+    setNotice("");
+    setError("");
+  }
 
   async function signIn() {
     if (!supabase) return;
@@ -1514,6 +1543,14 @@ export default function App() {
     return debtTypes.find((item) => item.value === type)?.label ?? "Autre dette";
   }
 
+  const selectedAccount = accounts.find((account) => account.id === selectedAccountId) ?? null;
+  const selectedAccountSummary = selectedAccount
+    ? accountValuations.find((item) => item.account.id === selectedAccount.id)
+    : null;
+  const selectedAccountRows = selectedAccount
+    ? investmentRows.filter((row) => row.position.account_id === selectedAccount.id)
+    : [];
+
   const pageTitle =
     activePage === "overview"
       ? "Vue d’ensemble"
@@ -1552,6 +1589,7 @@ export default function App() {
               onClick={() => {
                 if (page) {
                   setActivePage(page);
+                  setSelectedAccountId(null);
                   setNotice("");
                   setError("");
                 } else {
@@ -1566,16 +1604,6 @@ export default function App() {
         </nav>
 
         <div className="sidebar-bottom">
-          <button
-            className="nav-item"
-            onClick={() =>
-              setNotice("Les préférences seront disponibles dans une prochaine étape.")
-            }
-          >
-            <Settings2 size={18} />
-            <span>Préférences</span>
-          </button>
-
           <div className="secure-note">
             <ShieldCheck size={16} />
             <span>Espace privé et sécurisé</span>
@@ -2037,26 +2065,33 @@ export default function App() {
 
           {(activePage === "overview" || activePage === "accounts") && (
             <section className="panel bottom-panel">
-              <div className="panel-heading">
+              <div className="panel-heading" style={{ marginBottom: 18 }}>
                 <div>
                   <h2>
-                    {activePage === "overview"
-                      ? "Mes comptes"
-                      : "Mes comptes et enveloppes"}
+                    {selectedAccount && activePage === "accounts"
+                      ? selectedAccount.name
+                      : activePage === "overview" ? "Mes comptes" : "Mes comptes et enveloppes"}
                   </h2>
                   <p className="muted">
-                    {activePage === "overview"
-                      ? "Tous tes comptes et enveloppes au même endroit"
-                      : "Retrouve et gère tous tes comptes enregistrés"}
+                    {selectedAccount && activePage === "accounts"
+                      ? "Informations du compte et positions associées"
+                      : activePage === "overview"
+                        ? "Tous tes comptes et enveloppes au même endroit"
+                        : "Sélectionne un compte pour consulter son détail et ses positions"}
                   </p>
                 </div>
-                <button
-                  className="text-button"
-                  onClick={openCreateModal}
-                  disabled={!user}
-                >
-                  <Plus size={15} /> Ajouter un compte
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  {selectedAccount && activePage === "accounts" && (
+                    <button className="secondary-button" onClick={backToAccounts}>
+                      <ChevronDown size={15} style={{ transform: "rotate(90deg)" }} /> Retour aux comptes
+                    </button>
+                  )}
+                  {!selectedAccount && (
+                    <button className="text-button" onClick={openCreateModal} disabled={!user}>
+                      <Plus size={15} /> Ajouter un compte
+                    </button>
+                  )}
+                </div>
               </div>
 
               {!user ? (
@@ -2075,80 +2110,128 @@ export default function App() {
                     <span>Récupération de tes données depuis Supabase.</span>
                   </div>
                 </div>
+              ) : selectedAccount && activePage === "accounts" ? (
+                <div style={{ display: "grid", gap: 18 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+                    <div className="metric-card" style={{ minHeight: 0 }}>
+                      <div className="metric-top"><span>Valeur actuelle</span><span className="metric-icon"><Wallet size={17} /></span></div>
+                      <div className="metric-value" style={{ fontSize: 23 }}>
+                        {selectedAccountSummary?.valueInEuros === null || !selectedAccountSummary
+                          ? "— €" : euro(selectedAccountSummary.valueInEuros)}
+                      </div>
+                      <div className="metric-foot muted">{selectedAccountSummary?.status ?? "Valorisation indisponible"}</div>
+                    </div>
+                    <div className="metric-card" style={{ minHeight: 0 }}>
+                      <div className="metric-top"><span>Plus / moins-value latente</span><span className="metric-icon"><TrendingUp size={17} /></span></div>
+                      <div className="metric-value" style={{ fontSize: 23, color: selectedAccountSummary?.gainLossInEuros === null || selectedAccountSummary?.gainLossInEuros === undefined ? "#f0f5ff" : selectedAccountSummary.gainLossInEuros >= 0 ? "#42c99a" : "#ed7b9b" }}>
+                        {selectedAccountSummary?.gainLossInEuros === null || selectedAccountSummary?.gainLossInEuros === undefined
+                          ? "—" : `${selectedAccountSummary.gainLossInEuros > 0 ? "+" : ""}${euro(selectedAccountSummary.gainLossInEuros)}`}
+                      </div>
+                      <div className="metric-foot muted">
+                        {selectedAccountSummary?.gainLossPercent === null || selectedAccountSummary?.gainLossPercent === undefined
+                          ? "Performance non disponible"
+                          : `${selectedAccountSummary.gainLossPercent > 0 ? "+" : ""}${selectedAccountSummary.gainLossPercent.toFixed(2).replace(".", ",")} %`}
+                      </div>
+                    </div>
+                    <div className="metric-card" style={{ minHeight: 0 }}>
+                      <div className="metric-top"><span>Positions associées</span><span className="metric-icon"><BriefcaseBusiness size={17} /></span></div>
+                      <div className="metric-value" style={{ fontSize: 23 }}>{selectedAccountSummary?.positionCount ?? 0}</div>
+                      <div className="metric-foot muted">{selectedAccountSummary?.missingCount ?? 0} position(s) sans valorisation disponible</div>
+                    </div>
+                  </div>
+
+                  <div className="panel" style={{ padding: 16 }}>
+                    <div className="panel-heading" style={{ marginBottom: 12 }}>
+                      <div><h2>Informations du compte</h2><p className="muted">Détails enregistrés</p></div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {selectedAccount.account_type === "savings" && (
+                          <button className="secondary-button" onClick={() => openValuationModal(selectedAccount)}><Plus size={14} /> Valoriser</button>
+                        )}
+                        <button className="icon-button" title="Modifier le compte" onClick={() => openEditModal(selectedAccount)}><Pencil size={16} /></button>
+                        <button className="icon-button" title="Supprimer le compte" onClick={() => deleteAccount(selectedAccount)}><Trash2 size={16} /></button>
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, color: "#c5cede", fontSize: 12 }}>
+                      <div><span className="muted">Type</span><div>{getAccountTypeLabel(selectedAccount.account_type)}</div></div>
+                      <div><span className="muted">Établissement / courtier</span><div>{selectedAccount.broker || "Non renseigné"}</div></div>
+                      <div><span className="muted">Devise</span><div>{selectedAccount.currency || "EUR"}</div></div>
+                      {selectedAccount.notes && <div style={{ gridColumn: "1 / -1" }}><span className="muted">Notes</span><div style={{ whiteSpace: "pre-wrap" }}>{selectedAccount.notes}</div></div>}
+                    </div>
+                  </div>
+
+                  <div className="panel" style={{ padding: 16 }}>
+                    <div className="panel-heading" style={{ marginBottom: 12 }}>
+                      <div><h2>Positions de ce compte</h2><p className="muted">Les investissements rattachés à {selectedAccount.name}</p></div>
+                      <button className="text-button" onClick={() => { setPositionForm({ ...emptyPositionForm, account_id: selectedAccount.id, asset_id: assets[0]?.id ?? "", cost_currency: assets[0]?.currency ?? "EUR" }); setEditingPosition(null); setError(""); setPositionModalOpen(true); }} disabled={assets.length === 0}>
+                        <Plus size={15} /> Ajouter une position
+                      </button>
+                    </div>
+                    {selectedAccountRows.length === 0 ? (
+                      <div className="account-empty"><BriefcaseBusiness size={22} /><div><strong>Aucune position associée</strong><span>Ce compte ne contient actuellement aucun investissement enregistré.</span></div></div>
+                    ) : (
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {selectedAccountRows.map(({ position, asset, quote, marketValueInEuros, costInEuros, gainLossInEuros, gainLossPercent }) => (
+                          <div key={position.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center", gap: 12, padding: 13, border: "1px solid #26344d", borderRadius: 10, background: "rgba(13,21,37,.55)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                              <div className="account-symbol">{asset?.asset_type === "crypto" ? <Coins size={19} /> : <ChartNoAxesCombined size={19} />}</div>
+                              <div className="account-details" style={{ minWidth: 0 }}>
+                                <strong>{asset?.name ?? "Actif introuvable"}</strong>
+                                <span>{asset?.ticker ? `${asset.ticker} · ` : ""}{asset ? getAssetTypeLabel(asset.asset_type) : "Actif"}</span>
+                                <span className="valuation-date">Quantité : {numberFormat(Number(position.quantity))} · Prix moyen : {euro(Number(position.average_cost), position.cost_currency)}</span>
+                                <span className="valuation-date">{quote ? `Dernier cours : ${euro(Number(quote.price), quote.currency || asset?.currency || "EUR")} · ${formatDate(quote.quoted_at)}` : "Aucun cours disponible"}</span>
+                              </div>
+                            </div>
+                            <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                              <strong style={{ color: "#f0f5ff", fontSize: 13 }}>{marketValueInEuros === null ? "— €" : euro(marketValueInEuros)}</strong>
+                              <div className="valuation-date">Investi : {costInEuros === null ? "—" : euro(costInEuros)}</div>
+                              <div className="valuation-date" style={{ color: gainLossInEuros === null ? "#8995aa" : gainLossInEuros >= 0 ? "#42c99a" : "#ed7b9b" }}>{gainLossInEuros === null ? "Performance indisponible" : `${gainLossInEuros > 0 ? "+" : ""}${euro(gainLossInEuros)}${gainLossPercent === null ? "" : ` (${gainLossPercent.toFixed(2).replace(".", ",")} %)`}`}</div>
+                            </div>
+                            <div style={{ display: "flex", gap: 5 }}>
+                              <button className="icon-button" title="Modifier la position" onClick={() => openEditPositionModal(position)}><Pencil size={15} /></button>
+                              <button className="icon-button" title="Supprimer la position" onClick={() => deletePosition(position)}><Trash2 size={15} /></button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               ) : accounts.length === 0 ? (
                 <div className="account-empty">
                   <Wallet size={22} />
-                  <div>
-                    <strong>Aucun compte ajouté</strong>
-                    <span>
-                      Commence par ajouter ton PEA, tes CTO ou tes livrets.
-                    </span>
-                  </div>
-                  <button className="secondary-button" onClick={openCreateModal}>
-                    <Plus size={15} /> Ajouter un compte
-                  </button>
+                  <div><strong>Aucun compte ajouté</strong><span>Commence par ajouter ton PEA, tes CTO ou tes livrets.</span></div>
+                  <button className="secondary-button" onClick={openCreateModal}><Plus size={15} /> Ajouter un compte</button>
                 </div>
               ) : (
-                <div className="account-list">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 13 }}>
                   {accounts.map((account) => {
-                    const summary = accountValuations.find(
-                      (item) => item.account.id === account.id
-                    );
+                    const summary = accountValuations.find((item) => item.account.id === account.id);
+                    const gain = summary?.gainLossInEuros ?? null;
                     return (
-                      <div className="account-row" key={account.id}>
-                        <div className="account-symbol">
-                          <Wallet size={19} />
+                      <div key={account.id} style={{ border: "1px solid #26344d", borderRadius: 12, padding: 16, background: "linear-gradient(145deg, rgba(23,34,55,.92), rgba(13,21,37,.96))", display: "grid", gap: 13 }}>
+                        <div role="button" tabIndex={0} onClick={() => openAccountDetails(account)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openAccountDetails(account); } }} style={{ cursor: "pointer", display: "grid", gap: 12, outline: "none" }} aria-label={`Ouvrir le détail du compte ${account.name}`}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div className="account-symbol"><Wallet size={19} /></div>
+                            <div style={{ minWidth: 0, flex: 1 }}><strong style={{ display: "block", color: "#e3ebfa", fontSize: 13 }}>{account.name}</strong><span className="muted">{getAccountTypeLabel(account.account_type)}{account.broker ? ` · ${account.broker}` : ""}</span></div>
+                            <ChevronDown size={16} style={{ color: "#8190aa", transform: "rotate(-90deg)" }} />
+                          </div>
+                          <div>
+                            <div className="muted">Valeur actuelle</div>
+                            <div style={{ fontSize: 22, fontWeight: 650, color: "#f0f5ff", marginTop: 4 }}>{summary?.valueInEuros === null || !summary ? "— €" : euro(summary.valueInEuros)}</div>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, borderTop: "1px solid #26344d", paddingTop: 11 }}>
+                            <span className="muted">Plus / moins-value latente</span>
+                            <strong style={{ fontSize: 12, color: gain === null ? "#8995aa" : gain >= 0 ? "#42c99a" : "#ed7b9b" }}>{gain === null ? "Non disponible" : `${gain > 0 ? "+" : ""}${euro(gain)}`}</strong>
+                          </div>
+                          <div className="muted">{summary?.gainLossPercent === null || summary?.gainLossPercent === undefined ? "" : `${summary.gainLossPercent > 0 ? "+" : ""}${summary.gainLossPercent.toFixed(2).replace(".", ",")} % · `}{summary?.positionCount ?? 0} position(s) · {summary?.missingCount ?? 0} sans cours</div>
                         </div>
-
-                        <div className="account-details">
-                          <strong>{account.name}</strong>
-                          <span>
-                            {getAccountTypeLabel(account.account_type)}
-                            {account.broker ? ` · ${account.broker}` : ""}
-                          </span>
-                          <span className="valuation-date">
-                            {summary?.status ?? "Valorisation indisponible"}
-                          </span>
-                          {summary && summary.missingCount > 0 && account.account_type !== "savings" && (
-                            <span className="valuation-date">
-                              {summary.missingCount} position(s) sans cours ou conversion disponible
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="account-valuation">
-                          {summary?.valueInEuros === null || !summary
-                            ? <strong>—</strong>
-                            : <strong>{euro(summary.valueInEuros)}</strong>}
-                        </div>
-
-                        <div className="account-actions">
-                          {account.account_type === "savings" && (
-                            <button
-                              className="secondary-button valuation-button"
-                              onClick={() => openValuationModal(account)}
-                              title="Ajouter une valorisation de l'épargne"
-                            >
-                              <Plus size={15} />
-                              Valoriser
-                            </button>
-                          )}
-                          <button
-                            className="icon-button"
-                            aria-label="Modifier le compte"
-                            title="Modifier"
-                            onClick={() => openEditModal(account)}
-                          >
-                            <Pencil size={16} />
-                          </button>
-                          <button
-                            className="icon-button"
-                            aria-label="Supprimer le compte"
-                            title="Supprimer"
-                            onClick={() => deleteAccount(account)}
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid #26344d", paddingTop: 9 }}>
+                          <button className="text-button" onClick={() => openAccountDetails(account)}>Voir le détail <ChevronDown size={14} style={{ transform: "rotate(-90deg)" }} /></button>
+                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            {account.account_type === "savings" && <button className="icon-button" title="Valoriser l'épargne" onClick={() => openValuationModal(account)}><Plus size={15} /></button>}
+                            <button className="icon-button" title="Modifier le compte" onClick={() => openEditModal(account)}><Pencil size={15} /></button>
+                            <button className="icon-button" title="Supprimer le compte" onClick={() => deleteAccount(account)}><Trash2 size={15} /></button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -2157,7 +2240,6 @@ export default function App() {
               )}
             </section>
           )}
-
 
           {activePage === "performance" && (
             <>
