@@ -1649,13 +1649,24 @@ export default function App() {
                   <h1>{greeting} <span className="wave">✦</span></h1>
                   <p className="muted">Voici un aperçu de ton patrimoine.</p>
                 </div>
-                <button
-                  className="primary-button"
-                  onClick={openCreateModal}
-                  disabled={!user}
-                >
-                  <Plus size={17} /> Ajouter un compte
-                </button>
+                <div className="welcome-actions">
+                  <button
+                    className="primary-button"
+                    onClick={openCreateModal}
+                    disabled={!user}
+                  >
+                    <Plus size={17} /> Ajouter un compte
+                  </button>
+                  <button
+                    className="secondary-button"
+                    onClick={refreshQuotes}
+                    disabled={!user || quotesUpdating}
+                    title="Récupérer les derniers cours des actifs configurés en automatique"
+                  >
+                    <RefreshCw size={16} className={quotesUpdating ? "spin" : ""} />
+                    {quotesUpdating ? "Actualisation…" : "Actualiser les cours"}
+                  </button>
+                </div>
               </section>
 
               {!isSupabaseConfigured && (
@@ -1854,11 +1865,11 @@ export default function App() {
                         </span>
                       </div>
                     ) : (
-                      <div style={{ width: "100%", height: 290 }}>
+                      <div className="overview-chart" style={{ width: "100%", height: 320 }}>
                         <ResponsiveContainer width="100%" height="100%">
                           <AreaChart
                             data={historyData}
-                            margin={{ top: 10, right: 12, left: 0, bottom: 4 }}
+                            margin={{ top: 12, right: 12, left: 0, bottom: 14 }}
                           >
                             <defs>
                               <linearGradient
@@ -1878,6 +1889,7 @@ export default function App() {
                               stroke="#69758e"
                               tickFormatter={formatShortDate}
                               tick={{ fontSize: 11 }}
+                              tickMargin={10}
                               minTickGap={25}
                             />
                             <YAxis
